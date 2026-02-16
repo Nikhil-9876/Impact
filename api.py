@@ -76,7 +76,16 @@ OPTIMAL_THRESHOLD = 0.5
 
 
 def _apply_bandpass_torch(wav_t: torch.Tensor, sr: int) -> torch.Tensor:
-    """Bandpass filter to focus on speech band and reduce rumble/hiss."""
+    """
+    Apply bandpass filter to focus on speech frequency band.
+    
+    Args:
+        wav_t: Audio waveform tensor
+        sr: Sample rate in Hz
+    
+    Returns:
+        Filtered audio tensor
+    """
     if not USE_BANDPASS:
         return wav_t
     wav_t = torchaudio.functional.highpass_biquad(wav_t, sr, cutoff_freq=HIGHPASS_CUTOFF_HZ)
@@ -160,7 +169,18 @@ def _validate_audio_quality(wav_np: np.ndarray, sr: int) -> dict:
 
 
 def _denoise_spectral_gate_np(wav_np: np.ndarray, sr: int) -> np.ndarray:
-    """Mild spectral gating denoise (keeps speech; reduces steady background noise)."""
+    """
+    Apply mild spectral gating for noise reduction.
+    
+    Uses spectral subtraction to reduce steady background noise while preserving speech.
+    
+    Args:
+        wav_np: Audio waveform as numpy array
+        sr: Sample rate in Hz
+    
+    Returns:
+        Denoised audio array
+    """
     if not USE_DENOISE:
         return wav_np
     if wav_np.size == 0:
@@ -184,7 +204,15 @@ def _denoise_spectral_gate_np(wav_np: np.ndarray, sr: int) -> np.ndarray:
 
 
 def _sniff_audio_ext(audio_bytes: bytes) -> str:
-    """Best-effort format sniffing for base64/bytes inputs."""
+    """
+    Detect audio format from byte header.
+    
+    Args:
+        audio_bytes: Raw audio file bytes
+    
+    Returns:
+        File extension (.wav or .mp3)
+    """
     if not audio_bytes:
         return ".wav"
     head = audio_bytes[:64]
@@ -195,8 +223,21 @@ def _sniff_audio_ext(audio_bytes: bytes) -> str:
     return ".mp3"
 
 
-def _load_audio_any(audio_input, *, is_base64: bool, base64_format: str | None = None):
-    """Load audio from a filepath or base64 string. Returns (wav_np, sr)."""
+def _load_audio_any(audio_input, *, is_base64: bool, base64_format: Optional[str] = None):
+    """
+    Load audio from file path or base64 string.
+    
+    Args:
+        audio_input: File path (str) or base64-encoded audio string
+        is_base64: Whether input is base64 encoded
+        base64_format: Audio format hint for base64 input (e.g., 'mp3', 'wav')
+    
+    Returns:
+        Tuple of (audio_array, sample_rate)
+    
+    Raises:
+        ValueError: If audio cannot be loaded or decoded
+    """
     if not is_base64:
         path = str(audio_input)
         try:
@@ -295,9 +336,17 @@ for param in wavlm.parameters():
 aasist = AASISTHead().to(DEVICE)
 ocsoft = OCSoftmaxHead().to(DEVICE)
 
-# Helper function to handle DataParallel state dict loading
-def load_state_dict_flexible(model, state_dict):
-    """Load state dict, handling DataParallel 'module.' prefix if present."""
+def load_state_dict_flexible(model: nn.Module, state_dict: dict) -> None:
+    """
+    Load state dict with automatic DataParallel prefix handling.
+    
+    Removes 'module.' prefix from keys if present, allowing models
+    trained with DataParallel to be loaded on single GPU/CPU.
+    
+    Args:
+        model: PyTorch model to load weights into
+        state_dict: State dictionary with model weights
+    """
     # Check if state dict has 'module.' prefix
     if any(k.startswith('module.') for k in state_dict.keys()):
         # Remove 'module.' prefix
@@ -335,10 +384,21 @@ aasist.eval()
 ocsoft.eval()
 
 
-def _extract_crop(wav: np.ndarray, target_length: int, crop_type: str = "center", seed: int = None) -> np.ndarray:
+def _extract_crop(wav: np.ndarray, target_length: int, crop_type: str = "center", seed: Optional[int] = None) -> np.ndarray:
     """
-    Extract a crop from audio.
-    crop_type: 'center', 'random', 'start', 'end'
+    Extract a fixed-length segment from audio.
+    
+    For audio shorter than target_length, applies reflection padding.
+    For longer audio, extracts a segment based on crop_type.
+    
+    Args:
+        wav: Input audio array
+        target_length: Desired output length in samples
+        crop_type: Cropping strategy - 'center', 'random', 'start', or 'end'
+        seed: Random seed for reproducible 'random' crops
+    
+    Returns:
+        Audio segment of exactly target_length samples
     """
     current_length = len(wav)
     
@@ -375,15 +435,32 @@ def _extract_crop(wav: np.ndarray, target_length: int, crop_type: str = "center"
     return wav[start:start + target_length]
 
 
-def preprocess_audio(audio_input, is_base64=False, base64_format: str | None = None, return_multiple=False):
+def preprocess_audio(audio_input, is_base64: bool = False, base64_format: Optional[str] = None, return_multiple: bool = False):
     """
-    Preprocess audio for inference.
-    For short audio (<=5s): pads to 5 seconds
-    For long audio (>5s): uses sliding window to process entire audio
+    Preprocess audio for model inference.
+    
+    Applies the complete preprocessing pipeline:
+    1. Load and validate audio
+    2. Apply denoising (if enabled)
+    3. Apply bandpass filter
+    4. Normalize audio
+    5. Extract fixed-length windows
+    
+    For short audio (<=5s): Pads to 5 seconds
+    For long audio (>5s): Uses sliding window with 50% overlap
+    
+    Args:
+        audio_input: File path or base64-encoded audio string
+        is_base64: Whether input is base64 encoded
+        base64_format: Audio format hint for base64 input
+        return_multiple: If True, returns all windows; if False, returns center window only
     
     Returns:
-    - Single crop (tensor) if return_multiple=False
-    - List of windows + duration if return_multiple=True
+        If return_multiple is False: Single audio tensor [1, samples]
+        If return_multiple is True: Tuple of (list of tensors, audio_duration)
+    
+    Raises:
+        ValueError: If audio is invalid, too long, or fails quality checks
     """
     try:
         wav, sr = _load_audio_any(audio_input, is_base64=is_base64, base64_format=base64_format)
@@ -465,10 +542,28 @@ def preprocess_audio(audio_input, is_base64=False, base64_format: str | None = N
         raise ValueError(f"Error preprocessing audio: {str(e)}")
 
 
-def detect_ai_voice(audio_input, is_base64=False, language="English", threshold=None, base64_format: str | None = None):
+def detect_ai_voice(audio_input, is_base64: bool = False, language: str = "English", threshold: Optional[float] = None, base64_format: Optional[str] = None) -> dict:
     """
     Detect if voice is AI-generated or human.
-    For long audio: processes entire audio using sliding windows with 50% overlap.
+    
+    Uses an ensemble of two model heads (AASIST + OCSoftmax) with sliding window
+    analysis for comprehensive audio coverage.
+    
+    Args:
+        audio_input: File path or base64-encoded audio string
+        is_base64: Whether input is base64 encoded
+        language: Language of the audio (for logging/context)
+        threshold: Custom detection threshold (default: OPTIMAL_THRESHOLD)
+        base64_format: Audio format hint for base64 input
+    
+    Returns:
+        Dictionary containing:
+        - status: 'success' or 'error'
+        - classification: 'AI_GENERATED' or 'HUMAN'
+        - confidenceScore: Float between 0 and 1
+    
+    Raises:
+        ValueError: If audio processing fails
     """
     try:
         if threshold is None:
@@ -532,10 +627,21 @@ app.add_middleware(
 
 
 # API Key validation
-async def verify_api_key(x_api_key: str = Header(...)):
+async def verify_api_key(x_api_key: str = Header(...)) -> str:
     """
-    Validate API key from request headers against environment variable.
-    User supplies their key in x-api-key header, which is checked against API_KEY env variable.
+    Validate API key from request headers.
+    
+    Compares the provided API key in the x-api-key header against
+    the API_KEY environment variable.
+    
+    Args:
+        x_api_key: API key from request header
+    
+    Returns:
+        The validated API key
+    
+    Raises:
+        HTTPException: If API key is missing or invalid (401)
     """
     if not x_api_key or len(x_api_key.strip()) == 0:
         raise HTTPException(
@@ -560,8 +666,8 @@ class Base64AudioRequest(BaseModel):
     threshold: Optional[float] = Field(None, description="Custom detection threshold (0.0-1.0)")
 
     @validator('language')
-    def validate_language(cls, v):
-        # Make language case-insensitive
+    def validate_language(cls, v: str) -> str:
+        """Validate and normalize language field (case-insensitive)."""
         language_lower = v.lower()
         for lang in SUPPORTED_LANGUAGES:
             if lang.lower() == language_lower:
@@ -569,7 +675,8 @@ class Base64AudioRequest(BaseModel):
         raise ValueError(f"Language must be one of: {', '.join(SUPPORTED_LANGUAGES)}")
     
     @validator('audioFormat')
-    def validate_format(cls, v):
+    def validate_format(cls, v: str) -> str:
+        """Validate audio format is MP3."""
         if v.lower() != "mp3":
             raise ValueError("Only MP3 format is supported")
         return v.lower()
