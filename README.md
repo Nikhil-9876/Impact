@@ -37,6 +37,13 @@ Impact is a production-ready system for the **AI Voice Detection Hackathon** tha
 <!-- Eraser Diagram Embed — Replace the src URL below with your Eraser diagram link -->
 <!-- To create your diagram: https://app.eraser.io → Create a new diagram → Export as image or use embed link -->
 
+
+## 📐 Architecture Diagram
+
+[🧠 View Interactive Architecture Diagram (Eraser)](https://app.eraser.io/workspace/SMt9qIhY6so60oechhJM)
+
+
+
 <a href="https://app.eraser.io/workspace/SMt9qIhY6so60oechhJM" target="_blank">
   🧠 Click here to view the full Architecture Diagram (Eraser)
 </a>
