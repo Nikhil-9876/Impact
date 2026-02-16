@@ -40,6 +40,12 @@ Impact is a production-ready system for the **AI Voice Detection Hackathon** tha
 
 ## 📐 Architecture Diagram
 
+
+![Impact Architecture](./architecture.png)
+
+> End-to-end system pipeline showing audio preprocessing, WavLM feature extraction, dual-head ensemble (AASIST + OC-Softmax), and final classification flow.
+
+
 [🧠 View Interactive Architecture Diagram (Eraser)](https://app.eraser.io/workspace/SMt9qIhY6so60oechhJM)
 
 
