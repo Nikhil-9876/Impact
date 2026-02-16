@@ -603,31 +603,6 @@ export HF_SPACE_URL="https://your-username-your-space.hf.space"
 python keepalive_app.py
 ```
 
-### Option 2: Render
-
-1. Connect your GitHub repo to [Render](https://render.com)
-2. Create new Web Service
-3. Set build command: `pip install -r requirements.txt`
-4. Set start command: `uvicorn api:app --host 0.0.0.0 --port $PORT`
-5. Add environment variable: `API_KEY`
-
-### Option 3: Railway
-
-1. Connect repo to [Railway](https://railway.app)
-2. Add `Procfile`: `web: uvicorn api:app --host 0.0.0.0 --port $PORT`
-3. Set environment variable: `API_KEY`
-4. Deploy automatically from GitHub
-
-### Option 4: AWS/GCP/Azure
-
-Use Docker deployment:
-
-```bash
-docker build -t impact-ai-detector .
-docker run -p 7860:7860 -e API_KEY="your-key" impact-ai-detector
-```
-
----
 
 ## ⚠️ Common Issues & Troubleshooting
 
@@ -716,12 +691,13 @@ docker run -p 7860:7860 -e API_KEY="your-key" impact-ai-detector
 
 ## 🤝 Team
 
-Built for **AI Voice Detection Hackathon** by **Team Impact**.
+Built for **AI Voice Detection Hackathon** by **Team CUDEPT**.
 
 ### Team Members
-- [Your Name] - Model Architecture & Training
-- [Team Member] - API Development & Deployment
-- [Team Member] - Data Collection & Preprocessing
+-Nihar Mehta
+-Parth Srivastava
+-Nikhil Solanki
+-Nihar Mehta
 
 ---
 
@@ -733,8 +709,7 @@ This project is open source and available under the [MIT License](LICENSE).
 
 ## 🔗 Links
 
-- **Live Demo:** [Deployed URL]
-- **GitHub:** https://github.com/YOUR_USERNAME/Impact
+- **GitHub:** [https://github.com/Nikhil-9876/Impact]
 - **Documentation:** [API Docs](README_API.md)
 - **Model Weights:** [Contact team or see releases]
 
