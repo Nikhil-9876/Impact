@@ -498,6 +498,10 @@ def detect_ai_voice(audio_input, is_base64=False, language="English", threshold=
         else:
             classification = "HUMAN"
             confidence = 1.0 - final_score  # Convert to 0.5 to 1.0 range for HUMAN
+        
+        # Boost confidence to make predictions more confident (but keep below 1.0)
+        # Map [0.5, 1.0] to approximately [0.65, 0.95] range
+        confidence = min(0.65 + (confidence - 0.5) * 0.6, 0.95)
 
         return {
             "status": "success",
