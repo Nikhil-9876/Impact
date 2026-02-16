@@ -20,15 +20,15 @@ Impact is a production-ready system for the **AI Voice Detection Hackathon** tha
 
 | Requirement | Status | Implementation |
 |------------|--------|----------------|
-| **Response Format** | ✅ Complete | Exact JSON: `status`, `classification`, `confidenceScore` |
+| **Response Format** | ✅ Complete | Exact JSON with ONLY 3 fields: `status`, `classification`, `confidenceScore` |
 | **Classification Values** | ✅ Validated | Returns `"HUMAN"` or `"AI_GENERATED"` (case-sensitive) |
 | **Confidence Range** | ✅ Enforced | Scores between 0.0 and 1.0 |
-| **HTTP Status** | ✅ Consistent | Always returns 200 OK for valid requests |
+| **HTTP Status** | ✅ Consistent | Always returns 200 OK (even for errors) |
 | **API Authentication** | ✅ Implemented | `x-api-key` header support |
 | **Base64 Audio** | ✅ Supported | Handles base64 MP3 input |
 | **Multi-language** | ✅ Native | Tamil, English, Hindi, Malayalam, Telugu |
 | **Response Time** | ✅ Optimized | <30 seconds per request |
-| **Error Handling** | ✅ Robust | Graceful error responses with proper format |
+| **Error Handling** | ✅ Robust | Errors return same 3-field format with `status: "error"` |
 
 ---
 
@@ -84,6 +84,8 @@ x-api-key: your-api-key
 
 ### Required Response Format
 
+**IMPORTANT:** API responses ALWAYS contain exactly these 3 fields (no additional fields):
+
 ```json
 {
   "status": "success",
@@ -93,9 +95,12 @@ x-api-key: your-api-key
 ```
 
 **Field Requirements:**
-- `status`: Must be exactly `"success"` (case-sensitive)
+- `status`: Must be exactly `"success"` for successful predictions (case-sensitive)
+  - Note: Errors also return these same 3 fields with `status: "error"`, `classification: "HUMAN"`, `confidenceScore: 0.0`
 - `classification`: Must be `"HUMAN"` or `"AI_GENERATED"` (case-sensitive)
 - `confidenceScore`: Must be a number between 0.0 and 1.0
+
+**⚠️ CRITICAL:** Response contains ONLY these 3 fields - no `message`, `error`, `details`, or any other additional fields. This matches the hackathon evaluation requirements exactly.
 
 ### Scoring System
 
@@ -234,7 +239,7 @@ python api.py
 curl http://localhost:8000/health
 ```
 
-**Expected Response:**
+**Expected Response (Note: `/health` endpoint has different format than detection endpoint):**
 ```json
 {
   "status": "healthy",
@@ -315,17 +320,30 @@ curl -X POST "https://your-api-url.com/api/voice-detection" \
 }
 ```
 
+#### Response (Error - Still Uses Same 3 Fields)
+
+```json
+{
+  "status": "error",
+  "classification": "HUMAN",
+  "confidenceScore": 0.0
+}
+```
+
 #### Response Validation
 
-✅ **All fields are required**
-- HTTP Status Code: **200 OK**
-- `status`: Exactly `"success"` (lowercase)
+✅ **Response Format (ALWAYS exactly 3 fields)**
+- HTTP Status Code: **200 OK** (even for errors)
+- Response must be valid JSON with EXACTLY 3 fields
+- `status`: `"success"` for valid predictions, `"error"` for failures
 - `classification`: `"HUMAN"` or `"AI_GENERATED"` (exact case)
 - `confidenceScore`: Number between 0.0 and 1.0
+- **No additional fields** (no `message`, `error`, `details`, etc.)
 
 ❌ **Invalid Responses (will score 0 points)**
-- Non-200 status codes
-- Missing any required field
+- Non-200 HTTP status codes
+- Missing any of the 3 required fields
+- Extra fields beyond the 3 required
 - Wrong classification values (e.g., `"human"`, `"AI"`, `"ARTIFICIAL"`)
 - Confidence score outside 0-1 range
 - Non-JSON response
@@ -345,7 +363,15 @@ curl -X POST "http://localhost:8000/api/detect-from-file" \
   -F "language=English"
 ```
 
-**Response:** Same format as `/api/voice-detection`
+**Response:** Same 3-field format as `/api/voice-detection`
+
+```json
+{
+  "status": "success",
+  "classification": "HUMAN",
+  "confidenceScore": 0.85
+}
+```
 
 ---
 
@@ -374,8 +400,17 @@ response = requests.post(
 )
 
 result = response.json()
-print(f"Classification: {result['classification']}")
-print(f"Confidence: {result['confidenceScore']}")
+
+# Response will ALWAYS have exactly these 3 fields:
+# - status: "success" or "error"
+# - classification: "HUMAN" or "AI_GENERATED"
+# - confidenceScore: 0.0 to 1.0
+
+if result['status'] == 'success':
+    print(f"Classification: {result['classification']}")
+    print(f"Confidence: {result['confidenceScore']:.2f}")
+else:
+    print(f"Error occurred (classification defaults to: {result['classification']})")
 ```
 
 ---
@@ -500,9 +535,17 @@ def test_api(endpoint, api_key, audio_file, expected):
     assert 'classification' in data, "Missing 'classification' field"
     assert 'confidenceScore' in data, "Missing 'confidenceScore' field"
     
-    assert data['status'] == 'success', f"Status is {data['status']}"
+    # Ensure ONLY 3 fields (no extra fields)
+    assert len(data) == 3, f"Response must have exactly 3 fields, got {len(data)}: {list(data.keys())}"
+    
+    assert data['status'] in ['success', 'error'], f"Status must be 'success' or 'error', got {data['status']}"
     assert data['classification'] in ['HUMAN', 'AI_GENERATED'], f"Invalid classification: {data['classification']}"
     assert 0 <= data['confidenceScore'] <= 1, f"Invalid confidence: {data['confidenceScore']}"
+    
+    # For scoring, only 'success' responses count
+    if data['status'] != 'success':
+        print(f"   ⚠️  API returned status: {data['status']}")
+        return False, 0.0
     
     # Check correctness
     correct = data['classification'] == expected
@@ -524,15 +567,18 @@ test_api(ENDPOINT, API_KEY, "test_data/ai_voice.mp3", "AI_GENERATED")
 
 ### 3. Validation Checklist
 
-- [ ] API returns 200 status code
-- [ ] Response is valid JSON
-- [ ] All three fields present: `status`, `classification`, `confidenceScore`
-- [ ] `status` is exactly `"success"` (lowercase)
-- [ ] `classification` is `"HUMAN"` or `"AI_GENERATED"` (exact case)
-- [ ] `confidenceScore` is between 0.0 and 1.0
-- [ ] Response time < 30 seconds
+- [ ] API returns 200 status code (always, even for errors)
+- [ ] Response is valid JSON object
+- [ ] Response has EXACTLY 3 fields (no more, no less)
+- [ ] All three required fields present: `status`, `classification`, `confidenceScore`
+- [ ] No extra fields (no `message`, `error`, `details`, etc.)
+- [ ] `status` is exactly `"success"` for valid predictions (lowercase)
+- [ ] `classification` is `"HUMAN"` or `"AI_GENERATED"` (exact case, not "human" or "AI")
+- [ ] `confidenceScore` is a number between 0.0 and 1.0
+- [ ] Response time < 30 seconds per request
 - [ ] API handles multiple test files correctly
-- [ ] High confidence scores (aim for ≥0.80)
+- [ ] High confidence scores for correct predictions (aim for ≥0.80)
+- [ ] Error cases still return same 3-field format with `status: "error"`
 
 ---
 
@@ -580,8 +626,14 @@ docker run -p 7860:7860 -e API_KEY="your-key" impact-ai-detector
 
 ## ⚠️ Common Issues & Troubleshooting
 
+### Issue: "Response has extra fields"
+**Solution:** API must return EXACTLY 3 fields: `status`, `classification`, `confidenceScore`. Remove any `message`, `error`, `details`, or other fields from response JSON.
+
 ### Issue: "API returned status 401"
-**Solution:** Check API key in `x-api-key` header matches your deployed `API_KEY` environment variable.
+**Solution:** The API should return HTTP 200 even for errors. Authentication failures should return `{"status": "error", "classification": "HUMAN", "confidenceScore": 0.0}` with HTTP 200, not HTTP 401.
+
+### Issue: "Missing required fields"
+**Solution:** Every response must have all 3 fields: `status`, `classification`, `confidenceScore`. Check that no conditional logic skips any field.
 
 ### Issue: "confidenceScore outside 0-1 range"
 **Solution:** Ensure sigmoid activation is applied to model outputs and scores are clamped to [0, 1].
